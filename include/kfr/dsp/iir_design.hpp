@@ -33,6 +33,12 @@
 #include "../simd/vec.hpp"
 #include "../testo/assert.hpp"
 #include "biquad_design.hpp"
+#include "../math/elliptic.hpp"
+
+#include <cmath>
+#include <iostream>
+
+// using namespace std;
 
 namespace kfr
 {
@@ -100,6 +106,88 @@ KFR_FUNCTION zpk<T> chebyshev2(int N, identity<T> rs)
 
     T k = (product(-p) / product(-z)).real();
 
+    return { std::move(z), std::move(p), k };
+}
+
+template <typename T>
+KFR_FUNCTION zpk<T> elliptic(int N, identity<T> rp, identity<T> rs)
+{
+    if (N == 0)
+    {
+        return { {}, {}, exp10(-rp/20) };
+    }
+
+    if (N == 1)
+    {
+        univector<complex<T>> p = {-csqrt(complex<T>(1, 0) / (exp10(0.1*rp) - 1) )};
+        T k = -p[0].real();
+        return { {}, p, k };
+    }
+
+    double eps_sq = exp10(0.1*rp) - 1;
+    double eps = sqrt(eps_sq);
+
+    double ck1_sq = eps_sq / (exp10(0.1*rs) - 1);
+    if(ck1_sq == 0)
+      throw std::invalid_argument("Cannot design a filter with given rp and rs specifications.");
+
+    double ellipk = elliptic_k(ck1_sq);
+
+    double m      = elliptic_deg(N, ck1_sq);
+    double capk   = elliptic_k(m);
+
+    univector<complex<T>> z1, z2;
+    univector<T> j;
+    for(int i = 1 - N % 2; i <= N; i = i+2)
+      j.push_back(i);
+
+    const double _EPSILON = 2e-16;
+    int jj = j.size();
+
+    univector<T> s(jj);
+    univector<T> c(jj);
+    univector<T> d(jj);
+
+    for(int n = 0; n < jj; n++)
+    {
+        sncndn(j[n] * capk / N, m, s[n], c[n], d[n]);
+
+        if(abs(s[n]) > _EPSILON) 
+        {
+            z1.push_back( complex<T>(0,  1.0 / (sqrt(m) * s[n])) );
+            z2.push_back( complex<T>(0,  1.0 / (sqrt(m) * s[n])) );
+        }
+    }
+
+    univector<complex<T>> z = concatenate(z1, cconj(z2));
+
+    T sv, cv, dv;
+    T r = inv_jacobi_sc1(1. / eps, ck1_sq);
+    T v0 = capk * r / (N * ellipk);
+    sncndn(v0, 1 - m, sv, cv, dv);
+
+    univector<T> mag2;
+    univector<complex<T>> p1, p2;
+    for(int n = 0, jj = j.size(); n < jj; n++)
+    {
+      p1.push_back(- complex<T>(c[n] * d[n] * sv * cv, s[n] * dv) / (1 - pow((d[n] * sv), 2.0)));
+      mag2.push_back( p1[n].real()*p1[n].real() + p1[n].imag()*p1[n].imag() );
+    }
+
+    for(int n = 0, jj = j.size(); n < jj; n++)
+    {
+      if(N % 2 == 0 )
+        p2.push_back( - complex<T>(c[n] * d[n] * sv * cv, s[n] * dv) / (1 - pow((d[n] * sv), 2.0)) );
+      else if(abs(p1[n].imag()) > _EPSILON * sqrt(sum(mag2)))
+        p2.push_back( - complex<T>(c[n] * d[n] * sv * cv, s[n] * dv) / (1 - pow((d[n] * sv), 2.0)) );
+    }
+
+    univector<complex<T>> p = concatenate(p1, cconj(p2));
+    T k = (product(-p) / product(-z)).real();
+    
+    if (N % 2 == 0)
+        k = k / sqrt((1 + eps_sq));
+    
     return { std::move(z), std::move(p), k };
 }
 
@@ -851,11 +939,6 @@ KFR_FUNCTION zpk<T> bessel(int N)
         return { {}, {}, 1.f };
     }
 }
-
-// template <typename T>
-// KFR_FUNCTION zpk<T> iirfilter(const zpk<T>& filter)
-// {
-// }
 
 namespace internal
 {

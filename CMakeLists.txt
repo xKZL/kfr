@@ -15,6 +15,20 @@
 # along with KFR.
 
 cmake_minimum_required(VERSION 3.10)
+function(dump_cmake_variables)
+    get_cmake_property(_variableNames VARIABLES)
+    list (SORT _variableNames)
+    foreach (_variableName ${_variableNames})
+        if (ARGV0)
+            unset(MATCHED)
+            string(REGEX MATCH ${ARGV0} MATCHED ${_variableName})
+            if (NOT MATCHED)
+                continue()
+            endif()
+        endif()
+        message(STATUS "${_variableName}=${${_variableName}}")
+    endforeach()
+endfunction()
 
 project(kfr CXX)
 
@@ -126,6 +140,7 @@ if (MSVC AND CLANG)
 else ()
     set(CLANG_ARG_PREFIX "")
 endif ()
+
 
 # KFR library
 add_library(kfr INTERFACE)
@@ -262,7 +277,6 @@ if (ENABLE_DFT)
     append_defines_from(kfr_dft)
 endif ()
 append_defines_from(kfr_io)
-
 string(REPLACE "=" " " kfr_defines "${kfr_defines}")
 string(REPLACE ";" "\n#define " kfr_defines "${kfr_defines}")
 set(kfr_defines "#define ${kfr_defines}\n")

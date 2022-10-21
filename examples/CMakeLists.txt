@@ -28,6 +28,9 @@ target_link_libraries(biquads kfr use_arch)
 add_executable(iir iir.cpp)
 target_link_libraries(iir kfr use_arch)
 
+add_executable(elliptic elliptic.cpp)
+target_link_libraries(elliptic kfr use_arch)
+
 add_executable(window window.cpp)
 target_link_libraries(window kfr use_arch)
 
