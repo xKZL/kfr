@@ -22,20 +22,20 @@ inline namespace CMT_ARCH_NAME
 template <typename T>
 complex<T> sqrt(complex<T> w) 
 {
-  std::complex<T> z = std::sqrt(std::complex(w.real(), w.imag()));
-  return kfr::complex(z.real(), z.imag());
+  std::complex<T> z = std::sqrt(std::complex<T>(w.real(), w.imag()));
+  return kfr::complex<T>(z.real(), z.imag());
 }
 template <typename T>
 complex<T> atanh(complex<T> w) 
 {
-  std::complex<T> z = std::atanh(std::complex(w.real(), w.imag()));
-  return kfr::complex(z.real(), z.imag());
+  std::complex<T> z = std::atanh(std::complex<T>(w.real(), w.imag()));
+  return kfr::complex<T>(z.real(), z.imag());
 }
 template <typename T>
 complex<T> asin(complex<T> w) 
 {
-  std::complex<T> z = std::asin(std::complex(w.real(), w.imag()));
-  return kfr::complex(z.real(), z.imag());
+  std::complex<T> z = std::asin(std::complex<T>(w.real(), w.imag()));
+  return kfr::complex<T>(z.real(), z.imag());
 }
 
 template <typename T>
