@@ -86,5 +86,16 @@ int main()
         std::cout << std::endl;
     }
 
+    // Order computation - TEST
+    // std::vector<fbase> wp = {0.15136718750000000000000000000000, 0.34667968750000000000000000000000};
+    // std::vector<fbase> ws = {0.23925781250000000000000000000000,      0.25878906250000000000000000000000};
+
+    // std::cout << kfr::elliptic_order<fbase>(wp, ws, rp, rs) << std::endl;
+
+    // wp = {0.15136718750000000000000000000000, 0.34667968750000000000000000000000};
+    // ws = {0.15625,      0.341796875};
+
+    // std::cout << kfr::elliptic_order<fbase>(wp, ws, rp, rs) << std::endl;
+
     return 0;
 }

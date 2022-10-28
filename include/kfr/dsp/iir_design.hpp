@@ -53,6 +53,117 @@ struct zpk
 
 inline namespace CMT_ARCH_NAME
 {
+template <typename T>
+KFR_FUNCTION double chebyshev_order(std::vector<T> wp, std::vector<T> ws, identity<T> rp, identity<T> rs)
+{
+    if(wp.size() != ws.size())
+      throw std::invalid_argument("bandpass `wp` and bandstop `ws` coefficient must be of same size");    
+    if(wp.size() > 2)
+      throw std::invalid_argument("too many coefficients provided for `wp` and `ws`");
+
+    //
+    // Deduce filter type based on `wp` and `ws` parameters
+    int filter_type = -1;
+    if(wp.size() == 1) {
+
+        if(wp[0] < ws[0]) filter_type = 0; // Lowpass
+        if(wp[0] > ws[0]) filter_type = 1; // Highpass 
+
+    } else if(wp.size() == 2) {
+
+        if(wp[0] > wp[1]) {
+            T swp = wp[0];
+            wp[0] = wp[1]; wp[1] = swp;
+        }
+
+        if(ws[0] > ws[1]) {
+            T swp = ws[0];
+            ws[0] = ws[1]; ws[1] = swp;
+        }
+
+        if(wp[0] < ws[0] && wp[1] > ws[1]) filter_type = 2; // Bandpass
+        if(wp[0] > ws[0] && wp[1] < ws[1]) filter_type = 3; // Bandstop
+    }
+
+    wp[0] = tan(c_pi<T> * wp[0] / 2.0);
+    wp[1] = tan(c_pi<T> * wp[1] / 2.0);
+    ws[0] = tan(c_pi<T> * ws[0] / 2.0);
+    ws[1] = tan(c_pi<T> * ws[1] / 2.0);
+
+    if(filter_type < 0)
+      throw std::invalid_argument("cannot determine filter type from the coefficient provided");
+
+    //
+    // Deduce filter type based on `wp` and `ws` parameters
+    std::vector<T> nat;
+    if(filter_type == 0) {
+    
+        nat.push_back(ws[0]/wp[0]);
+    
+    } else if(filter_type == 1) {
+
+        nat.push_back(wp[0]/ws[0]);
+
+    } else if(filter_type == 2) {
+
+        std::vector<T>  yp0, yp1;
+        const T _WEPSILON = 1e-12;
+
+        std::vector<T> _wp = {wp[0], wp[1]};
+        
+        const int _MAX_STEP = 500;  // # iter limitation
+        const T _XTOL       = 1e-4; //     df limitation
+        double df0 = max((ws[0] - _WEPSILON - wp[0])/_MAX_STEP, _XTOL);
+
+        for(int iStep = 0; iStep <= _MAX_STEP; iStep++) {
+        
+            _wp[0] = wp[0] + df0*iStep;
+
+            std::vector<T> nat;
+                           nat.push_back( ws[0] * (_wp[0] - _wp[1]) / ( pow(ws[0],2) - _wp[0] * _wp[1] ));
+                           nat.push_back( ws[1] * (_wp[0] - _wp[1]) / ( pow(ws[1],2) - _wp[0] * _wp[1] ));
+
+            T _rs  = pow(10, 0.1 * rs);
+            T _rp  = pow(10, 0.1 * rp);
+            T _nat = nat.size() > 1 ? min(abs(nat[0]), abs(nat[1])) : abs(nat[0]);
+
+            yp1.push_back(acosh(sqrt((_rs - 1.0) / (_rp - 1.0))) / acosh(_nat));
+        }
+
+        _wp[0] = wp[0] + df0 * (std::min_element(yp0.begin(), yp0.end()) - yp0.begin());
+
+        double df1 = max((wp[1] - (ws[1] + _WEPSILON))/_MAX_STEP, _XTOL);
+        for(int iStep = 0; iStep <= _MAX_STEP; iStep++) {
+        
+            _wp[1] = ws[1] + _WEPSILON + df1*iStep;
+            
+            std::vector<T> nat;
+                           nat.push_back(ws[0] * (_wp[0] - _wp[1]) / (pow(ws[0],2) - _wp[0] * _wp[1]));
+                           nat.push_back(ws[1] * (_wp[0] - _wp[1]) / (pow(ws[1],2) - _wp[0] * _wp[1]));
+
+            T _rs  = pow(10, 0.1 * rs);
+            T _rp  = pow(10, 0.1 * rp);
+            T _nat = nat.size() > 1 ? min(abs(nat[0]), abs(nat[1])) : abs(nat[0]);
+
+            yp1.push_back(acosh(sqrt((_rs - 1.0) / (_rp - 1.0))) / acosh(_nat));
+        }
+
+        _wp[1] = ws[1] + _WEPSILON + df1 * (std::min_element(yp1.begin(), yp1.end()) - yp1.begin());
+
+        nat.push_back(ws[0] * (_wp[0] - _wp[1]) / (pow(ws[0],2) - _wp[0] * _wp[1]));
+        nat.push_back(ws[1] * (_wp[0] - _wp[1]) / (pow(ws[1],2) - _wp[0] * _wp[1]));
+
+    } else if(filter_type == 3) {
+
+        nat.push_back( (pow(ws[0],2) - wp[0] * wp[1]) / (ws[0] * (wp[0] - wp[1])) );
+        nat.push_back( (pow(ws[1],2) - wp[0] * wp[1]) / (ws[1] * (wp[0] - wp[1])) );
+    }
+
+    T _rs = pow(10, 0.1 * rs);
+    T _rp = pow(10, 0.1 * rp);
+    T _nat  = nat.size() > 1 ? min(abs(nat[0]), abs(nat[1])) : abs(nat[0]);
+    return ceil(acosh(sqrt((_rs - 1.0) / (_rp - 1.0))) / acosh(_nat));
+}
 
 template <typename T>
 KFR_FUNCTION zpk<T> chebyshev1(int N, identity<T> rp)
@@ -107,6 +218,135 @@ KFR_FUNCTION zpk<T> chebyshev2(int N, identity<T> rs)
     T k = (product(-p) / product(-z)).real();
 
     return { std::move(z), std::move(p), k };
+}
+
+template <typename T>
+KFR_FUNCTION double elliptic_order(std::vector<T> wp, std::vector<T> ws, identity<T> rp, identity<T> rs)
+{
+    if(wp.size() != ws.size())
+      throw std::invalid_argument("bandpass `wp` and bandstop `ws` coefficient must be of same size");    
+    if(wp.size() > 2)
+      throw std::invalid_argument("too many coefficients provided for `wp` and `ws`");
+    
+    //
+    // Deduce filter type based on `wp` and `ws` parameters
+    int filter_type = -1;
+    if(wp.size() == 1) {
+
+        if(wp[0] < ws[0]) filter_type = 0; // Lowpass
+        if(wp[0] > ws[0]) filter_type = 1; // Highpass 
+
+    } else if(wp.size() == 2) {
+
+        if(wp[0] > wp[1]) {
+            T swp = wp[0];
+            wp[0] = wp[1]; wp[1] = swp;
+        }
+
+        if(ws[0] > ws[1]) {
+            T swp = ws[0];
+            ws[0] = ws[1]; ws[1] = swp;
+        }
+
+        if(wp[0] < ws[0] && wp[1] > ws[1]) filter_type = 2; // Bandpass
+        if(wp[0] > ws[0] && wp[1] < ws[1]) filter_type = 3; // Bandstop
+    }
+
+    wp[0] = tan(c_pi<T> * wp[0] / 2.0);
+    wp[1] = tan(c_pi<T> * wp[1] / 2.0);
+    ws[0] = tan(c_pi<T> * ws[0] / 2.0);
+    ws[1] = tan(c_pi<T> * ws[1] / 2.0);
+
+    if(filter_type < 0)
+      throw std::invalid_argument("cannot determine filter type from the coefficient provided");
+
+    //
+    // Deduce filter type based on `wp` and `ws` parameters
+    std::vector<T> nat;
+    if(filter_type == 0) {
+    
+        nat.push_back(ws[0]/wp[0]);
+    
+    } else if(filter_type == 1) {
+
+        nat.push_back(wp[0]/ws[0]);
+
+    } else if(filter_type == 2) {
+
+        std::vector<T>  yp0, yp1;
+        const T _WEPSILON = 1e-12;
+
+        std::vector<T> _wp = {wp[0], wp[1]};
+        
+        const int _MAX_STEP = 500;  // # iter limitation
+        const T _XTOL       = 1e-4; //     df limitation
+        double df0 = max((ws[0] - _WEPSILON - wp[0])/_MAX_STEP, _XTOL);
+
+        for(int iStep = 0; iStep <= _MAX_STEP; iStep++) {
+        
+            _wp[0] = wp[0] + df0*iStep;
+
+            std::vector<T> nat;
+                           nat.push_back( ws[0] * (_wp[0] - _wp[1]) / ( pow(ws[0],2) - _wp[0] * _wp[1] ));
+                           nat.push_back( ws[1] * (_wp[0] - _wp[1]) / ( pow(ws[1],2) - _wp[0] * _wp[1] ));
+
+            T _rs = pow(10, 0.1 * rs);
+            T _rp = pow(10, 0.1 * rp);
+
+            T _nat  = nat.size() > 1 ? min(abs(nat[0]), abs(nat[1])) : abs(nat[0]);
+            T _arg0 = 1. / _nat;
+            T _arg1 = sqrt((_rp - 1.0) / (_rs - 1.0));
+            
+            yp0.push_back(
+                (elliptic_k(    pow(_arg0,2)) * elliptic_k(1 - pow(_arg1,2))) / 
+                (elliptic_k(1 - pow(_arg0,2)) * elliptic_k(    pow(_arg1,2)))
+            );
+        }
+
+        _wp[0] = wp[0] + df0 * (std::min_element(yp0.begin(), yp0.end()) - yp0.begin());
+
+        double df1 = max((wp[1] - (ws[1] + _WEPSILON))/_MAX_STEP, _XTOL);
+        for(int iStep = 0; iStep <= _MAX_STEP; iStep++) {
+        
+            _wp[1] = ws[1] + _WEPSILON + df1*iStep;
+            
+            std::vector<T> nat;
+                           nat.push_back(ws[0] * (_wp[0] - _wp[1]) / (pow(ws[0],2) - _wp[0] * _wp[1]));
+                           nat.push_back(ws[1] * (_wp[0] - _wp[1]) / (pow(ws[1],2) - _wp[0] * _wp[1]));
+            
+            T _rs = pow(10, 0.1 * rs);
+            T _rp = pow(10, 0.1 * rp);
+
+            T _nat  = nat.size() > 1 ? min(abs(nat[0]), abs(nat[1])) : abs(nat[0]);
+            T _arg0 = 1. / _nat;
+            T _arg1 = sqrt((_rp - 1.0) / (_rs - 1.0));
+
+            yp1.push_back(
+                (elliptic_k(    pow(_arg0,2)) * elliptic_k(1 - pow(_arg1,2))) / 
+                (elliptic_k(1 - pow(_arg0,2)) * elliptic_k(    pow(_arg1,2)))
+            );
+        }
+
+        _wp[1] = ws[1] + _WEPSILON + df1 * (std::min_element(yp1.begin(), yp1.end()) - yp1.begin());
+
+        nat.push_back(ws[0] * (_wp[0] - _wp[1]) / (pow(ws[0],2) - _wp[0] * _wp[1]));
+        nat.push_back(ws[1] * (_wp[0] - _wp[1]) / (pow(ws[1],2) - _wp[0] * _wp[1]));
+
+    } else if(filter_type == 3) {
+
+        nat.push_back( (pow(ws[0],2) - wp[0] * wp[1]) / (ws[0] * (wp[0] - wp[1])) );
+        nat.push_back( (pow(ws[1],2) - wp[0] * wp[1]) / (ws[1] * (wp[0] - wp[1])) );
+    }
+
+    T _nat  = nat.size() > 1 ? min(abs(nat[0]), abs(nat[1])) : abs(nat[0]);
+
+    T arg0 = 1. / _nat;
+    T arg1_sq = (exp10(0.1*rp) - 1) / (exp10(0.1*rs) - 1);
+
+    return ceil(
+        (elliptic_k  ( pow(arg0, 2) ) * elliptic_km1(arg1_sq)) / 
+        (elliptic_km1( pow(arg0, 2) ) * elliptic_k  (arg1_sq))
+    );
 }
 
 template <typename T>
@@ -189,6 +429,119 @@ KFR_FUNCTION zpk<T> elliptic(int N, identity<T> rp, identity<T> rs)
         k = k / sqrt((1 + eps_sq));
     
     return { std::move(z), std::move(p), k };
+}
+
+template <typename T>
+KFR_FUNCTION double butterworth_order(std::vector<T> wp, std::vector<T> ws, identity<T> rp, identity<T> rs)
+{
+    if(wp.size() != ws.size())
+      throw std::invalid_argument("bandpass `wp` and bandstop `ws` coefficient must be of same size");    
+    if(wp.size() > 2)
+      throw std::invalid_argument("too many coefficients provided for `wp` and `ws`");
+    
+    //
+    // Deduce filter type based on `wp` and `ws` parameters
+    int filter_type = -1;
+    if(wp.size() == 1) {
+
+        if(wp[0] < ws[0]) filter_type = 0; // Lowpass
+        if(wp[0] > ws[0]) filter_type = 1; // Highpass 
+
+    } else if(wp.size() == 2) {
+
+        if(wp[0] > wp[1]) {
+            T swp = wp[0];
+            wp[0] = wp[1]; wp[1] = swp;
+        }
+
+        if(ws[0] > ws[1]) {
+            T swp = ws[0];
+            ws[0] = ws[1]; ws[1] = swp;
+        }
+
+        if(wp[0] < ws[0] && wp[1] > ws[1]) filter_type = 2; // Bandpass
+        if(wp[0] > ws[0] && wp[1] < ws[1]) filter_type = 3; // Bandstop
+    }
+
+    wp[0] = tan(c_pi<T> * wp[0] / 2.0);
+    wp[1] = tan(c_pi<T> * wp[1] / 2.0);
+    ws[0] = tan(c_pi<T> * ws[0] / 2.0);
+    ws[1] = tan(c_pi<T> * ws[1] / 2.0);
+
+    if(filter_type < 0)
+      throw std::invalid_argument("cannot determine filter type from the coefficient provided");
+
+    //
+    // Deduce filter type based on `wp` and `ws` parameters
+    std::vector<T> nat;
+    if(filter_type == 0) {
+    
+        nat.push_back(ws[0]/wp[0]);
+    
+    } else if(filter_type == 1) {
+
+        nat.push_back(wp[0]/ws[0]);
+
+    } else if(filter_type == 2) {
+
+        std::vector<T>  yp0, yp1;
+        const T _WEPSILON = 1e-12;
+
+        std::vector<T> _wp = {wp[0], wp[1]};
+        
+        const int _MAX_STEP = 500;  // # iter limitation
+        const T _XTOL       = 1e-4; //     df limitation
+        double df0 = max((ws[0] - _WEPSILON - wp[0])/_MAX_STEP, _XTOL);
+
+        for(int iStep = 0; iStep <= _MAX_STEP; iStep++) {
+        
+            _wp[0] = wp[0] + df0*iStep;
+
+            std::vector<T> nat;
+                      nat.push_back( ws[0] * (_wp[0] - _wp[1]) / ( pow(ws[0],2) - _wp[0] * _wp[1] ));
+                      nat.push_back( ws[1] * (_wp[0] - _wp[1]) / ( pow(ws[1],2) - _wp[0] * _wp[1] ));
+
+            T _rs = pow(10, 0.1 * rs);
+            T _rp = pow(10, 0.1 * rp);
+            T _nat  = nat.size() > 1 ? min(abs(nat[0]), abs(nat[1])) : abs(nat[0]);
+
+            yp0.push_back(log10((_rs - 1.0) / (_rp - 1.0)) / (2 * log10(_nat)));
+        }
+
+        _wp[0] = wp[0] + df0 * (std::min_element(yp0.begin(), yp0.end()) - yp0.begin());
+
+        double df1 = max((wp[1] - (ws[1] + _WEPSILON))/_MAX_STEP, _XTOL);
+        for(int iStep = 0; iStep <= _MAX_STEP; iStep++) {
+        
+            _wp[1] = ws[1] + _WEPSILON + df1*iStep;
+            
+            std::vector<T> nat;
+                      nat.push_back(ws[0] * (_wp[0] - _wp[1]) / (pow(ws[0],2) - _wp[0] * _wp[1]));
+                      nat.push_back(ws[1] * (_wp[0] - _wp[1]) / (pow(ws[1],2) - _wp[0] * _wp[1]));
+
+            T _rs = pow(10, 0.1 * rs);
+            T _rp = pow(10, 0.1 * rp);
+            T _nat  = nat.size() > 1 ? min(abs(nat[0]), abs(nat[1])) : abs(nat[0]);
+
+            yp1.push_back(log10((_rs - 1.0) / (_rp - 1.0)) / (2 * log10(_nat)));
+        }
+
+        _wp[1] = ws[1] + _WEPSILON + df1 * (std::min_element(yp1.begin(), yp1.end()) - yp1.begin());
+
+        nat.push_back(ws[0] * (_wp[0] - _wp[1]) / (pow(ws[0],2) - _wp[0] * _wp[1]));
+        nat.push_back(ws[1] * (_wp[0] - _wp[1]) / (pow(ws[1],2) - _wp[0] * _wp[1]));
+
+    } else if(filter_type == 3) {
+
+        nat.push_back( (pow(ws[0],2) - wp[0] * wp[1]) / (ws[0] * (wp[0] - wp[1])) );
+        nat.push_back( (pow(ws[1],2) - wp[0] * wp[1]) / (ws[1] * (wp[0] - wp[1])) );
+    }
+
+    T _rs  = pow(10, 0.1 * rs);
+    T _rp  = pow(10, 0.1 * rp);
+    T _nat = nat.size() > 1 ? min(abs(nat[0]), abs(nat[1])) : abs(nat[0]);
+
+    return ceil(log10((_rs - 1.0) / (_rp - 1.0)) / (2 * log10(_nat)));
 }
 
 template <typename T>
