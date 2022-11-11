@@ -17,7 +17,10 @@ int main()
     const std::string options = "freqresp=True, dots=True, padwidth=1024, "
                                 "log_freq=False, horizontal=False, normalized_freq=True";
 
-    univector<fbase, 64> output;
+    univector<fbase, 16> output;
+    output = window_tukey(output.size(), 0.5);
+    plot_save("window_tukey", output, options + ", title='Tukey window'");
+
     output = window_hann(output.size());
     plot_save("window_hann", output, options + ", title='Hann window'");
 

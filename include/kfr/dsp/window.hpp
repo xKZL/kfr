@@ -208,6 +208,34 @@ private:
 };
 
 template <typename T>
+struct expression_tukey : input_expression
+{
+    using value_type = T;
+
+    expression_tukey(size_t size, T alpha = 0.5, window_symmetry symmetry = window_symmetry::symmetric)
+        : linspace(size, symmetry), alpha(alpha), m_size(size)
+    {
+    }
+    template <size_t N>
+    KFR_INTRINSIC friend vec<T, N> get_elements(const expression_tukey& self, cinput_t cinput, size_t index,
+                                                vec_shape<T, N> y)
+    {
+        if(index < self.alpha*self.m_size/2 || index >= self.m_size - self.alpha*self.m_size/2) 
+            return T(0.5) * (T(1) - cos(c_pi<T, 2> / self.alpha * get_elements(self.linspace, cinput, index, y)));
+
+        using TI           = utype<T>;
+        const vec<TI, N> i = enumerate(vec_shape<TI, N>()) + static_cast<TI>(index);
+        return select(i < static_cast<TI>(self.m_size), T(1), T(0));
+    }
+    size_t size() const { return m_size; }
+
+private:
+    window_linspace_0_1<T> linspace;
+    T alpha;
+    size_t m_size;
+};
+
+template <typename T>
 struct expression_hann : input_expression
 {
     using value_type = T;
@@ -527,6 +555,17 @@ KFR_FUNCTION internal::expression_bartlett_hann<T> window_bartlett_hann(size_t s
                                                                         ctype_t<T> = ctype_t<T>())
 {
     return internal::expression_bartlett_hann<T>(size);
+}
+
+/**
+ * @brief Returns template expression that generates Tukey tapered window of length @c size where &alpha; = @c
+ * alpha
+ */
+template <typename T = fbase>
+KFR_FUNCTION internal::expression_tukey<T> window_tukey(size_t size, identity<T> alpha = 0.5,
+                                                            ctype_t<T> = ctype_t<T>())
+{
+    return internal::expression_tukey<T>(size, alpha);
 }
 
 /**
