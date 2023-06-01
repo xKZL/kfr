@@ -38,6 +38,11 @@
 #include <cmath>
 #include <iostream>
 
+#include "../math/elliptic.hpp"
+
+#include <cmath>
+#include <iostream>
+
 // using namespace std;
 
 namespace kfr
